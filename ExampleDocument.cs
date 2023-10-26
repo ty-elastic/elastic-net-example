@@ -14,7 +14,7 @@ public class ExampleDocument
     public string ExampleKeyword2 { get; set; }
     public string ExampleText { get; set; }
     public string ExampleWildcard { get; set; }
-    // by setting "configureOptions = o => o.PropertyNamingPolicy = null", properties will be serialized in PascalCase, unless otherwise noted
+    // by default, we've configured for PascalCase serialization; here we force camelCase
     [JsonPropertyName("exampleSubDoc")]
     public SubDoc exampleSubDoc { get; set; }
     public List<SubDoc> ExampleSubDocArray { get; set; }
