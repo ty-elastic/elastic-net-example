@@ -1,3 +1,5 @@
+source .env
+
 ELASTICSEARCH_URL="https://${ES_USER}:${ES_PASS}@${ES_ENDPOINT}:443"
 echo $ELASTICSEARCH_URL
 
