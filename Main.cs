@@ -11,3 +11,5 @@ await example.ArrayOfArraysSearch();
 await example.WildcardSearch();
 
 await example.Aggregations();
+
+await example.RawWildcardSearch();

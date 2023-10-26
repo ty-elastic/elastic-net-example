@@ -2,23 +2,25 @@
 using Elastic.Transport;
 using System.Text.Json;
 using Elastic.Clients.Elasticsearch.Serialization;
+using Newtonsoft.Json;
+using System;
+using System.Diagnostics;
 
 public class Example
 {
     private const string INDEX_NAME = "example";
-    // set default serialization to PascalCase (null) or camelCase (JsonNamingPolicy.CamelCase)
-    private Action<JsonSerializerOptions> configureOptions = o => o.PropertyNamingPolicy = null;
     private ElasticsearchClient client;
 
     public async Task Connect()
     {
-        // connect to ES
         var settings = new ElasticsearchClientSettings(
-            new CloudNodePool(
-                Environment.GetEnvironmentVariable("ES_CLOUD_ID"),
-                new ApiKey(Environment.GetEnvironmentVariable("ES_API_KEY"))),
-            sourceSerializer: (defaultSerializer, settings) =>
-                new DefaultSourceSerializer(settings, configureOptions)).EnableDebugMode();
+        // new CloudNodePool(
+        //     Environment.GetEnvironmentVariable("ES_CLOUD_ID"),
+        //     new ApiKey(Environment.GetEnvironmentVariable("ES_API_KEY"))),
+            new SingleNodePool(new Uri($"https://{Environment.GetEnvironmentVariable("ES_USER")}:{Environment.GetEnvironmentVariable("ES_PASS")}@{Environment.GetEnvironmentVariable("ES_ENDPOINT")}")));
+        // set default serialization to PascalCase (null) or camelCase (JsonNamingPolicy.CamelCase)
+        settings.DefaultFieldNameInferrer(p => p);
+        //settings.EnableDebugMode();
 
         client = new ElasticsearchClient(settings);
     }
@@ -44,41 +46,44 @@ public class Example
                 exampleSubDoc = subDoc,
                 ExampleSubDocArray = new List<SubDoc> { subDoc, subDoc },
                 ExampleSubDocArrayNested = new List<SubDoc> { subDoc, subDoc },
-                ExampleArrayofArrays = new List<List<string>> { new List<string> {"ExampleText1", "ExampleText2"}, new List<string> {"ExampleText3", "ExampleText4"} },
+                ExampleArrayofArrays = new List<List<string>> { new List<string> { "ExampleText1", "ExampleText2" }, new List<string> { "ExampleText3", "ExampleText4" } },
             };
             // write it to ES
             var response = await client
                 .IndexAsync(document, INDEX_NAME);
             if (response.IsSuccess())
-            {
                 Console.WriteLine("indexed:" + response);
-            }
+            else
+                Console.WriteLine(response.DebugInformation);
         }
         var response2 = await client.Indices.RefreshAsync(INDEX_NAME);
+        Console.WriteLine(response2.DebugInformation);
         if (response2.IsSuccess())
-        {
             Console.WriteLine("refreshed:" + response2);
-        }
     }
 
     public async Task SynonymSearch()
     {
         // query based on synonyms (see "indices.sh" for setup)
-        var response3 = await client.SearchAsync<ExampleDocument>(s => s
+        var response = await client.SearchAsync<ExampleDocument>(s => s
             .Index(INDEX_NAME)
             .Size(10)
             .Query(q => q
                 .Bool(b => b
                     .Must(m => m
                         .Match(f => f
-                            .Field(new Field(nameof(ExampleDocument.ExampleText)))
+                            .Field(ff => ff.ExampleText)
                             .Query("hi")
                         )
-            )))
+                    )
+                )
+            )
         );
-        if (response3.IsSuccess())
+        Console.WriteLine(response.DebugInformation);
+        if (response.IsSuccess())
         {
-            var doc = response3.Documents.FirstOrDefault();
+            var doc = response.Documents.FirstOrDefault();
+            Debug.Assert(doc != null);
             Console.WriteLine("synonym matched: " + Newtonsoft.Json.JsonConvert.SerializeObject(doc));
         }
     }
@@ -86,7 +91,7 @@ public class Example
     public async Task MultiFieldSearch()
     {
         // search across multiple fields
-        var response4 = await client.SearchAsync<ExampleDocument>(s => s
+        var response = await client.SearchAsync<ExampleDocument>(s => s
             .Index(INDEX_NAME)
             .Query(q => q
                 .MultiMatch(m => m
@@ -95,10 +100,14 @@ public class Example
                     )
                     .Query("hotdog")
                     .Fuzziness(new Fuzziness("AUTO"))
-                )));
-        if (response4.IsSuccess())
+                )
+            )
+        );
+        Console.WriteLine(response.DebugInformation);
+        if (response.IsSuccess())
         {
-            var doc = response4.Documents.FirstOrDefault();
+            var doc = response.Documents.FirstOrDefault();
+            Debug.Assert(doc != null);
             Console.WriteLine("multi-field matched: " + Newtonsoft.Json.JsonConvert.SerializeObject(doc));
         }
     }
@@ -108,41 +117,48 @@ public class Example
         var response = await client.SearchAsync<ExampleDocument>(s => s
             .Index(INDEX_NAME)
             .Size(0)
-                .Query(q => q
-                    .Bool(b => b
-                    .Filter(f => f
-                                .Term(f => f
-                                    .Field(new Field(nameof(ExampleDocument.exampleSubDoc) + "." + nameof(SubDoc.ExampleInt)))
-                                    .Value(4567))
-                        )))
-                    .Aggregations(agg => agg
-                        .Sum("int-total", sum => sum.Field(new Field(nameof(ExampleDocument.exampleSubDoc) + "." + nameof(SubDoc.ExampleInt))))));
+            .Query(q => q
+                .Bool(b => b
+                .Filter(f => f
+                            .Term(f => f
+                            .Field(ff => ff.exampleSubDoc.ExampleInt)
+                                .Value(4567))
+                    )
+                )
+            )
+            .Aggregations(agg => agg
+                    .Sum("int-total", sum => sum.Field(ff => ff.exampleSubDoc.ExampleInt))
+            )
+        );
+        Console.WriteLine(response.DebugInformation);
         if (response.IsSuccess())
         {
             var agg = response.Aggregations.GetSum("int-total");
+            Debug.Assert(agg != null);
             Console.WriteLine("agg result: " + agg.Value);
         }
     }
 
-        public async Task ArrayOfArraysSearch()
+    public async Task ArrayOfArraysSearch()
     {
         // search across multiple fields
-        var response4 = await client.SearchAsync<ExampleDocument>(s => s
+        var response = await client.SearchAsync<ExampleDocument>(s => s
             .Index(INDEX_NAME)
             .Size(10)
             .Query(q => q
                 .Bool(b => b
                     .Must(m => m
                         .Match(f => f
-                            .Field(new Field(nameof(ExampleDocument.ExampleArrayofArrays)))
+                            .Field(ff => ff.ExampleArrayofArrays)
                             .Query("ExampleText3")
                         )
             )))
         );
-        Console.WriteLine(response4.DebugInformation);
-        if (response4.IsSuccess())
+        Console.WriteLine(response.DebugInformation);
+        if (response.IsSuccess())
         {
-            var doc = response4.Documents.FirstOrDefault();
+            var doc = response.Documents.FirstOrDefault();
+            Debug.Assert(doc != null);
             Console.WriteLine("array of arrays matched: " + Newtonsoft.Json.JsonConvert.SerializeObject(doc));
         }
     }
@@ -150,20 +166,21 @@ public class Example
     public async Task WildcardSearch()
     {
         // search across multiple fields
-        var response4 = await client.SearchAsync<ExampleDocument>(s => s
+        var response = await client.SearchAsync<ExampleDocument>(s => s
             .Index(INDEX_NAME)
             .Size(10)
             .Query(q => q
                 .Wildcard(b => b
-                            .Field(new Field(nameof(ExampleDocument.ExampleWildcard)))
+                            .Field(ff => ff.ExampleWildcard)
                             .Value("Ex*")
                         )
             )
         );
-        Console.WriteLine(response4.DebugInformation);
-        if (response4.IsSuccess())
+        Console.WriteLine(response.DebugInformation);
+        if (response.IsSuccess())
         {
-            var doc = response4.Documents.FirstOrDefault();
+            var doc = response.Documents.FirstOrDefault();
+            Debug.Assert(doc != null);
             Console.WriteLine("wildcard matched: " + Newtonsoft.Json.JsonConvert.SerializeObject(doc));
         }
     }
@@ -171,62 +188,102 @@ public class Example
 
     public async Task FilterOnSubDoc()
     {
-        var response3 = await client.SearchAsync<ExampleDocument>(s => s
+        var response = await client.SearchAsync<ExampleDocument>(s => s
             .Index(INDEX_NAME)
             .Size(10)
             .Query(q => q
                 .Bool(b => b
                     .Must(m => m
                         .Match(f => f
-                            .Field(new Field(nameof(ExampleDocument.ExampleKeyword1)))
+                            .Field(ff => ff.ExampleKeyword1)
                             .Query("hamburger")
-                        ))
-            .Filter(f => f
-                .Bool(b => b
-                    .Must(m => m
-                        .Term(f => f
-                            .Field(new Field(nameof(ExampleDocument.exampleSubDoc) + "." + nameof(SubDoc.ExampleInt)))
-                            .Value(4567))
-                )))))
+                        )
+                    )
+                .Filter(f => f
+                    .Bool(b => b
+                        .Must(m => m
+                            .Term(f => f
+                                .Field(ff => ff.exampleSubDoc.ExampleInt)
+                                .Value(4567)
+                            )
+                        )
+                    )
+                )
+                )
+            )
         );
-        if (response3.IsSuccess())
+        Console.WriteLine(response.DebugInformation);
+        if (response.IsSuccess())
         {
-            var doc = response3.Documents.FirstOrDefault();
+            var doc = response.Documents.FirstOrDefault();
+            Debug.Assert(doc != null);
             Console.WriteLine("filter matched: " + Newtonsoft.Json.JsonConvert.SerializeObject(doc));
         }
     }
 
+    public async Task<Elastic.Transport.StringResponse> RawSearch(string search)
+    {
+        var response = await client.Transport.RequestAsync<StringResponse>(Elastic.Transport.HttpMethod.GET, $"/{INDEX_NAME}/_search", PostData.String(search));
+        return response;
+    }
+
+    public async Task RawWildcardSearch() {
+        var search = """
+        {
+            "fields": ["ExampleKeyword1"],
+
+            "query": {
+                "wildcard": {
+                    "ExampleWildcard": 
+                    {
+                        "value" : "Exa*"
+                    }
+                }
+            },
+            "size": 10
+        }
+        """;
+        var response = await RawSearch(search);
+        Console.WriteLine("raw matched: " + response);
+    }
+
     public async Task NestedSearchAndSort1()
     {
-        var response3 = await client.SearchAsync<ExampleDocument>(s => s
+        var response = await client.SearchAsync<ExampleDocument>(s => s
             .Index(INDEX_NAME)
             .Size(10)
             .Query(q => q
                 .Nested(n => n
-                    .Path(new Field(nameof(ExampleDocument.ExampleSubDocArrayNested)))
+                    .Path(p => p.ExampleSubDocArrayNested)
                     .Query(u => u
                         .Bool(b => b
                             .Must(m => m
                                 .Match(f => f
                                     .Field(new Field(nameof(ExampleDocument.ExampleSubDocArrayNested) + "." + nameof(SubDoc.ExampleKeyword2)))
                                     .Query("keyword2")
-                                ))))))
-    .Sort(new[]
+                                )
+                            )
+                        )
+                    )
+                )
+            )
+            .Sort(new[]
             {
                 SortOptions.Field(nameof(ExampleDocument.exampleSubDoc) + "." + nameof(SubDoc.ExampleInt), new FieldSort { Order = SortOrder.Desc })
             })
-                    );
-        if (response3.IsSuccess())
+        );
+        Console.WriteLine(response.DebugInformation);
+        if (response.IsSuccess())
         {
-            foreach (var doc in response3.Documents)
+            Debug.Assert(response.Documents.Count > 0);
+            foreach (var doc in response.Documents)
                 Console.WriteLine("filter matched: " + Newtonsoft.Json.JsonConvert.SerializeObject(doc));
         }
     }
 
-    // show sort on nested
     public async Task NestedSearchAndSort2()
     {
-        var response3 = await client.SearchAsync<ExampleDocument>(s => s
+        var response = await client.SearchAsync<ExampleDocument>(s => s
             .Index(INDEX_NAME)
             .Size(10)
             .Query(q => q
@@ -238,25 +295,30 @@ public class Example
                                 .Match(f => f
                                     .Field(new Field(nameof(ExampleDocument.ExampleSubDocArrayNested) + "." + nameof(SubDoc.ExampleKeyword2)))
                                     .Query("keyword2")
-                                ))))))
-    .Sort(new[]
-    {
-        SortOptions.Field(nameof(ExampleDocument.ExampleSubDocArrayNested) + "." + nameof(SubDoc.ExampleInt),
-            new FieldSort
+                                )
+                            )
+                        )
+                    )
+                )
+            )
+            .Sort(new[]
             {
-                Order = SortOrder.Desc,
-                Nested = new NestedSortValue
-                {
-                    Path = new Field(nameof(ExampleDocument.ExampleSubDocArrayNested))
-                }
+                SortOptions.Field(nameof(ExampleDocument.ExampleSubDocArrayNested) + "." + nameof(SubDoc.ExampleInt),
+                    new FieldSort
+                    {
+                        Order = SortOrder.Desc,
+                        Nested = new NestedSortValue
+                        {
+                            Path = new Field(nameof(ExampleDocument.ExampleSubDocArrayNested))
+                        }
+                    })
             })
-    })
-    );
-
-        Console.WriteLine(response3.DebugInformation);
-        if (response3.IsSuccess())
+        );
+        Console.WriteLine(response.DebugInformation);
+        if (response.IsSuccess())
         {
-            foreach (var doc in response3.Documents)
+            Debug.Assert(response.Documents.Count > 0);
+            foreach (var doc in response.Documents)
                 Console.WriteLine("filter matched: " + Newtonsoft.Json.JsonConvert.SerializeObject(doc));
         }
     }
