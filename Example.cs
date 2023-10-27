@@ -20,7 +20,7 @@ public class Example
         //     Environment.GetEnvironmentVariable("ES_CLOUD_ID"),
         //     new ApiKey(Environment.GetEnvironmentVariable("ES_API_KEY"))),
             new SingleNodePool(new Uri($"https://{Environment.GetEnvironmentVariable("ES_USER")}:{Environment.GetEnvironmentVariable("ES_PASS")}@{Environment.GetEnvironmentVariable("ES_ENDPOINT")}")));
-        // set default serialization to PascalCase (null) or camelCase (JsonNamingPolicy.CamelCase)
+        // set default serialization to use actual class names
         settings.DefaultFieldNameInferrer(p => p);
         settings.EnableDebugMode();
 

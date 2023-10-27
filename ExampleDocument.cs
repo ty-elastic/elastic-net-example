@@ -8,15 +8,12 @@ public class SubDoc
 }
 public class Child
 {
-    [JsonPropertyName("name")]
     public string name { get; set; }
 }
 
 public class Parent
 {
-    [JsonPropertyName("parentId")]
     public string parentId { get; set; }
-    [JsonPropertyName("children")]
     public List<Child> children { get; set; }
 }
 
@@ -27,8 +24,6 @@ public class ExampleDocument
     public string ExampleKeyword2 { get; set; }
     public string ExampleText { get; set; }
     public string ExampleWildcard { get; set; }
-    // by default, we've configured for PascalCase serialization; here we force camelCase
-    [JsonPropertyName("exampleSubDoc")]
     public SubDoc exampleSubDoc { get; set; }
     public List<SubDoc> ExampleSubDocArray { get; set; }
     public List<SubDoc> ExampleSubDocArrayNested { get; set; }
