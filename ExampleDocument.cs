@@ -6,6 +6,19 @@ public class SubDoc
     public string ExampleKeyword1 { get; set; }
     public string ExampleKeyword2 { get; set; }
 }
+public class Child
+{
+    [JsonPropertyName("name")]
+    public string name { get; set; }
+}
+
+public class Parent
+{
+    [JsonPropertyName("parentId")]
+    public string parentId { get; set; }
+    [JsonPropertyName("children")]
+    public List<Child> children { get; set; }
+}
 
 public class ExampleDocument
 {
@@ -20,4 +33,5 @@ public class ExampleDocument
     public List<SubDoc> ExampleSubDocArray { get; set; }
     public List<SubDoc> ExampleSubDocArrayNested { get; set; }
     public List<List<string>> ExampleArrayofArrays { get; set; }
+    public List<Parent> ExampleArrayOfNestedArrays { get; set; }
 }

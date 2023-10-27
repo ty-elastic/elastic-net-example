@@ -22,7 +22,7 @@ public class Example
             new SingleNodePool(new Uri($"https://{Environment.GetEnvironmentVariable("ES_USER")}:{Environment.GetEnvironmentVariable("ES_PASS")}@{Environment.GetEnvironmentVariable("ES_ENDPOINT")}")));
         // set default serialization to PascalCase (null) or camelCase (JsonNamingPolicy.CamelCase)
         settings.DefaultFieldNameInferrer(p => p);
-        //settings.EnableDebugMode();
+        settings.EnableDebugMode();
 
         client = new ElasticsearchClient(settings);
     }
@@ -38,6 +38,7 @@ public class Example
                 ExampleKeyword1 = "keyword1",
                 ExampleKeyword2 = "keyword2"
             };
+ 
             var document = new ExampleDocument
             {
                 ExampleInt = 1234 + i,
@@ -49,6 +50,10 @@ public class Example
                 ExampleSubDocArray = new List<SubDoc> { subDoc, subDoc },
                 ExampleSubDocArrayNested = new List<SubDoc> { subDoc, subDoc },
                 ExampleArrayofArrays = new List<List<string>> { new List<string> { "ExampleText1", "ExampleText2" }, new List<string> { "ExampleText3", "ExampleText4" } },
+                ExampleArrayOfNestedArrays = new List<Parent> { 
+                    new Parent{parentId="abc", children= new List<Child>{new Child{name="Michael"}, new Child{name= "Scott"}, new Child{name= "Chris"}}},
+                    new Parent{parentId="xxx", children= new List<Child>{new Child{name="Jack"}, new Child{name= "Jen"}, new Child{name= "Jeff"}}}
+                }
             };
             // write it to ES
             var response = await client
@@ -340,6 +345,46 @@ public class Example
                         }
                     })
             })
+        );
+        Console.WriteLine(response.DebugInformation);
+        if (response.IsSuccess())
+        {
+            Debug.Assert(response.Documents.Count > 0);
+            foreach (var doc in response.Documents)
+                Console.WriteLine("filter matched: " + Newtonsoft.Json.JsonConvert.SerializeObject(doc));
+        }
+    }
+
+    public async Task NestedSearch()
+    {
+        var response = await client.SearchAsync<ExampleDocument>(s => s
+            .Index(INDEX_NAME)
+            .Size(10)
+            .Query(q => q
+                .Nested(n => n
+                    .Path(p => p.ExampleArrayOfNestedArrays)
+                    .Query(u => u
+                        .Nested(nn => nn
+                            .Path(nameof(ExampleDocument.ExampleArrayOfNestedArrays) + "." + nameof(Parent.children))
+                            .Query(uu => uu
+                                .Bool(b => b
+                                     .Must(m => m
+                                        .Match(f => f
+                                            .Field(nameof(ExampleDocument.ExampleArrayOfNestedArrays) + "." + nameof(Parent.children) + "." + nameof(Child.name))
+                                            .Query("Jack")
+                                        )
+                                        .Match(f => f
+                                            .Field(nameof(ExampleDocument.ExampleArrayOfNestedArrays) + "." + nameof(Parent.children) + "." + nameof(Child.name))
+                                            .Query("Jeff")
+                                        )
+                                     )
+                                )
+                            )
+                        )
+                    )
+                    .InnerHits(new Elastic.Clients.Elasticsearch.Core.Search.InnerHits())
+                )
+            )
         );
         Console.WriteLine(response.DebugInformation);
         if (response.IsSuccess())

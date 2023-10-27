@@ -95,6 +95,24 @@ curl -XPUT "$ELASTICSEARCH_URL/example" -H "kbn-xsrf: reporting" -H "Content-Typ
       },
       "ExampleArrayofArrays": {
           "type": "text"
+      },
+      "ExampleArrayOfNestedArrays": {
+          "type": "nested",
+          "dynamic": "strict",
+          "properties": {
+              "parentId": {
+                  "type": "keyword"
+              },
+              "children": {
+                "type": "nested",
+                "dynamic": "strict",
+                "properties": {
+                  "name": {
+                    "type": "text"
+                  }
+                }
+              }
+          }
       }
     }
   }
