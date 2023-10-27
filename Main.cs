@@ -13,3 +13,4 @@ await example.WildcardSearch();
 await example.Aggregations();
 
 await example.RawWildcardSearch();
+await example.NoFluentSearch();

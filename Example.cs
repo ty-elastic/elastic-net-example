@@ -5,6 +5,8 @@ using Elastic.Clients.Elasticsearch.Serialization;
 using Newtonsoft.Json;
 using System;
 using System.Diagnostics;
+using Elastic.Clients.Elasticsearch.QueryDsl;
+using System.Text.RegularExpressions;
 
 public class Example
 {
@@ -85,6 +87,31 @@ public class Example
             var doc = response.Documents.FirstOrDefault();
             Debug.Assert(doc != null);
             Console.WriteLine("synonym matched: " + Newtonsoft.Json.JsonConvert.SerializeObject(doc));
+        }
+    }
+
+    public async Task NoFluentSearch()
+    {
+        var boolQuery = new BoolQuery
+        {
+            Must = new Query[]
+                {
+                    new MatchQuery(Infer.Field<ExampleDocument>(p => p.ExampleText)) { Query = "hi" }
+                }
+        };
+
+        // query based on synonyms (see "indices.sh" for setup)
+        var response = await client.SearchAsync<ExampleDocument>(s => s
+            .Index(INDEX_NAME)
+            .Size(10)
+            .Query(boolQuery)
+        );
+        Console.WriteLine(response.DebugInformation);
+        if (response.IsSuccess())
+        {
+            var doc = response.Documents.FirstOrDefault();
+            Debug.Assert(doc != null);
+            Console.WriteLine("matched: " + Newtonsoft.Json.JsonConvert.SerializeObject(doc));
         }
     }
 
