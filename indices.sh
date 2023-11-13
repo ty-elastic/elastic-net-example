@@ -53,9 +53,12 @@ curl -XPUT "$ELASTICSEARCH_URL/example" -H "kbn-xsrf: reporting" -H "Content-Typ
       "ExampleKeyword2": {
         "type": "keyword"
       },
-      "ExampleText": {
+      "ExampleSynonym": {
         "type": "text",
         "search_analyzer": "example_search_analyzer"
+      },
+      "ExampleText": {
+        "type": "text"
       },
       "ExampleWildcard": {
         "type": "wildcard"

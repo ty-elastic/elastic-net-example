@@ -23,6 +23,7 @@ public class ExampleDocument
     public string ExampleKeyword1 { get; set; }
     public string ExampleKeyword2 { get; set; }
     public string ExampleText { get; set; }
+    public string ExampleSynonym { get; set; }
     public string ExampleWildcard { get; set; }
     public SubDoc exampleSubDoc { get; set; }
     public List<SubDoc> ExampleSubDocArray { get; set; }

@@ -6,7 +6,11 @@ using Newtonsoft.Json;
 using System;
 using System.Diagnostics;
 using Elastic.Clients.Elasticsearch.QueryDsl;
+using Elastic.Clients.Elasticsearch.Core.Search;
 using System.Text.RegularExpressions;
+using Elastic.Clients.Elasticsearch.Core.TermVectors;
+using Elastic.Clients.Elasticsearch.Aggregations;
+using Elastic.Apm.Api;
 
 public class Example
 {
@@ -44,7 +48,8 @@ public class Example
                 ExampleInt = 1234 + i,
                 ExampleKeyword1 = "hamburger",
                 ExampleKeyword2 = "hotdog",
-                ExampleText = "Hello",
+                ExampleText = "Hello my name is Bob",
+                ExampleSynonym = "Hello",
                 ExampleWildcard = "ExampleWildcard",
                 exampleSubDoc = subDoc,
                 ExampleSubDocArray = new List<SubDoc> { subDoc, subDoc },
@@ -79,7 +84,7 @@ public class Example
                 .Bool(b => b
                     .Must(m => m
                         .Match(f => f
-                            .Field(ff => ff.ExampleText)
+                            .Field(ff => ff.ExampleSynonym)
                             .Query("hi")
                         )
                     )
@@ -101,7 +106,7 @@ public class Example
         {
             Must = new Query[]
                 {
-                    new MatchQuery(Infer.Field<ExampleDocument>(p => p.ExampleText)) { Query = "hi" }
+                    new MatchQuery(Infer.Field<ExampleDocument>(p => p.ExampleSynonym)) { Query = "hi" }
                 }
         };
 
@@ -169,6 +174,55 @@ public class Example
             Debug.Assert(agg != null);
             Console.WriteLine("agg result: " + agg.Value);
         }
+    }
+
+    public async Task<string> AggregationsNoFluentWithTracing()
+    {
+        var transaction = Elastic.Apm.Agent.Tracer.CurrentTransaction;
+        ISpan span = transaction.StartSpan("SumAggregation",
+            ApiConstants.TypeDb, ApiConstants.SubtypeElasticsearch, ApiConstants.ActionQuery);
+
+        try {
+            var boolFilter = new BoolQuery
+            {
+                Filter = new Query[]
+                    {
+                        new TermQuery(Infer.Field<ExampleDocument>(p => p.exampleSubDoc.ExampleInt)) { Value = 4567 }
+                    }
+            };
+
+            var sumAggregation = new SumAggregation("int-total", Infer.Field<ExampleDocument>(p => p.exampleSubDoc.ExampleInt));
+
+            var response = await client.SearchAsync<ExampleDocument>(s => s
+                .Index(INDEX_NAME)
+                .Size(0)
+                .Query(boolFilter)
+                .Aggregations(sumAggregation)
+            );
+            
+            // for demo purposes, always log DSL query to trace
+            span.CaptureErrorLog(new ErrorLog(response.DebugInformation));
+            if (response.IsSuccess())
+            {
+                var agg = response.Aggregations.GetSum("int-total");
+                Debug.Assert(agg != null);
+                Console.WriteLine("agg result: " + agg.Value);
+                return "agg result: " + agg.Value;
+            } else {
+                // normally, log the DSL only on error
+                span.CaptureErrorLog(new ErrorLog(response.DebugInformation));
+            }
+        }
+        catch (Exception e)
+        {
+            span.CaptureException(e);
+            throw;
+        }
+        finally
+        {
+            span.End();
+        }
+        return "error";
     }
 
     public async Task ArrayOfArraysSearch()
@@ -392,6 +446,43 @@ public class Example
             Debug.Assert(response.Documents.Count > 0);
             foreach (var doc in response.Documents)
                 Console.WriteLine("filter matched: " + Newtonsoft.Json.JsonConvert.SerializeObject(doc));
+        }
+    }
+
+    public async Task HighlightSearch()
+    {
+        // search across multiple fields
+        var response = await client.SearchAsync<ExampleDocument>(s => s
+            .Index(INDEX_NAME)
+            .Query(q => q
+                        .Match(f => f
+                            .Field(ff => ff.ExampleText)
+                            .Query("name")
+                        )
+            )
+            .Fields(fs => fs
+                .Field(f => f.ExampleText)
+            )
+            .Highlight(h => h
+                .PreTags(new List<string> {"<tag1>"})
+                .PostTags(new List<string> {"</tag1>"})
+                .Encoder(HighlighterEncoder.Html)
+                .Fields(fs => fs
+                    .Add(new Field(nameof(ExampleDocument.ExampleText)), new HighlightField())
+                )
+            )
+        );
+        Console.WriteLine(response.DebugInformation);
+        if (response.IsSuccess())
+        {
+            Debug.Assert(response.Hits.Select(d => d.Highlight).Count() > 0);
+            foreach (var highlightsInEachHit in response.Hits.Select(d => d.Highlight))
+            {
+                foreach (var highlightField in highlightsInEachHit)
+                {
+                    Console.WriteLine("matched w/ highlight: " + Newtonsoft.Json.JsonConvert.SerializeObject(highlightField));
+                }
+            }
         }
     }
 }
